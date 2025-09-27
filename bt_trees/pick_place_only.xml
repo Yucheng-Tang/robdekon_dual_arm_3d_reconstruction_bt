@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<root main_tree_to_execute="Main">
+  <BehaviorTree ID="Main">
+
+    <Sequence name="PickAndPlace">
+
+      <Action ID="AddObstacle"
+          obstacle_name="table"
+          parent_frame="base"
+          obstacle_shape="box"
+          obstacle_size="[1.28 0.82 0.945]"
+          obstacle_pose="[0.25 0.475 -0.4725 0.707141 0 0 0.707073]"/>
+
+      <Action ID="AddObstacle"
+        obstacle_name="left_mount"
+        parent_frame="base"
+        obstacle_shape="box"
+        obstacle_size="[0.26 0.26 0.025]"
+        obstacle_pose="[0.0 0.0 0 1 0 0 0]"/>
+
+      <!-- <EmitPoseParam ns="one_arm_nbv_bt.pre_pick_pose" target="{target}"/> -->
+      <PlanArmMove ns="one_arm_nbv_bt.pre_pick_pose"/>
+
+      <!-- <EmitPoseParam ns="one_arm_nbv_bt.pick_pose" target="{target}"/> -->
+      <PlanArmMove ns="one_arm_nbv_bt.pick_pose"/>
+
+      <Pick/>
+
+      <!-- <EmitPoseParam ns="one_arm_nbv_bt.pre_place_pose"  target="{target}"/> -->
+      <PlanArmMove ns="one_arm_nbv_bt.pre_place_pose"/>
+
+      <!-- <EmitPoseParam ns="one_arm_nbv_bt.place_pose" target="{target}"/> -->
+      <PlanArmMove ns="one_arm_nbv_bt.place_pose"/>
+
+      <Place/>
+
+      <MoveToJoints ns="one_arm_nbv_bt.home"/>
+
+    </Sequence>
+
+  </BehaviorTree>
+</root>

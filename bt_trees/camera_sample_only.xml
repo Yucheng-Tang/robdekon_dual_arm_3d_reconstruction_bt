@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<root main_tree_to_execute="Main">
+  <!-- Exactly ONE child inside BehaviorTree -->
+  <BehaviorTree ID="Main">
+    <Sequence name="SampleOnce">
+      <!-- Subscribes /camera/depth/color/points, filters (desk/ROI/robot mask),
+           publishes to /nbv/filtered_cloud. All behavior is driven by YAML params. -->
+      <CameraSample/>
+      <!-- Optionally fuse the single sample into your map (no-op if your fuse node
+           just listens to /nbv/filtered_cloud asynchronously) -->
+      <FusePointCloud/>
+    </Sequence>
+  </BehaviorTree>
+</root>

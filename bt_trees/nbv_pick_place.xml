@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<root main_tree_to_execute="Main">
+  <BehaviorTree ID="Main">
+
+    <Sequence name="Startup">
+      <CameraSample/>
+      <FusePointCloud/>
+    </Sequence>
+
+    <LoopUntilSuccess>
+      <Sequence name="NBV_Loop">
+        <ComputeNBV/>           <!-- outputs pose target -->
+        <PlanArmMove/>          <!-- plan+execute to NBV -->
+        <CameraSample/>
+        <FusePointCloud/>
+        <CheckCoverage/>        <!-- success => loop ends -->
+      </Sequence>
+    </LoopUntilSuccess>
+
+    <Sequence name="Pick">
+      <Pick/>                   <!-- simple approach + attach proxy -->
+    </Sequence>
+
+    <!-- Optional reorientation before place -->
+    <Sequence name="Reorient">
+      <ComputeReorient/>        <!-- computes new EE orientation -->
+      <PlanArmMove/>            <!-- move to reoriented pose -->
+    </Sequence>
+
+    <Sequence name="Place">
+      <Place/>                  <!-- move to place pose & detach -->
+    </Sequence>
+
+  </BehaviorTree>
+</root>

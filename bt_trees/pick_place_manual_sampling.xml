@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<root main_tree_to_execute="Main">
+  <BehaviorTree ID="Main">
+
+    <Sequence name="PickPlaceThenScan">
+
+      <Sequence name="PickAndPlace">
+
+      <Action ID="AddObstacle"
+          obstacle_name="table"
+          parent_frame="base"
+          obstacle_shape="box"
+          obstacle_size="[1.28 0.82 0.945]"
+          obstacle_pose="[0.25 0.475 -0.48375 0.707141 0 0 0.707073]"/>
+
+      <Action ID="AddObstacle"
+        obstacle_name="left_mount"
+        parent_frame="base"
+        obstacle_shape="box"
+        obstacle_size="[0.26 0.26 0.01125]"
+        obstacle_pose="[0.0 0.0 -0.005625 1 0 0 0]"/>
+
+      <Action ID="AddObstacle"
+          obstacle_name="safety_object"
+          parent_frame="base"
+          obstacle_shape="sphere"
+          obstacle_size="[0.25]"
+          obstacle_pose="[0.35, 0.0, 0.0 0 0 0 1]"/>
+
+      <SwitchControllers
+        activate="fr3_arm_controller"
+        deactivate="gravity_compensation_example_controller"/>
+
+      <ChangeObjectCenter/>
+
+      <!-- Pick & Place with your existing nodes  -->
+      <!-- <PlanArmMove ns="one_arm_nbv_bt.pre_pick_pose" />
+
+      <PlanArmMove ns="one_arm_nbv_bt.pick_pose" />
+      <Pick/>
+
+      <PlanArmMove ns="one_arm_nbv_bt.pre_place_pose"/>
+
+      <PlanArmMove ns="one_arm_nbv_bt.place_pose"/>
+      <Place/>-->
+
+      <MoveToJoints ns="one_arm_nbv_bt.home"/> 
+
+      <!--  Switch controllers for hand-guiding / gravity compensation  -->
+      <!-- Deactivate joint_trajectory_controller; activate impedance or hand-guiding controller -->
+      <!-- <SwitchControllers
+        activate="gravity_compensation_example_controller"
+        deactivate="fr3_arm_controller"/> -->
+      
+      </Sequence> 
+
+      <!--  Manual NBV sampling loop (user moves arm by hand) -->
+      <Repeat num_cycles="10">
+        <ReactiveSequence name="ManualSampleFuse">
+          <!-- <Inverter>
+            <CheckCoverage coverage="{coverage}" threshold="0.90"/>
+          </Inverter> -->
+
+          <Sequence>
+            <!-- <UserGateWait topic="/nbv/next" expect="next" timeout_ms="60000"/> -->
+            <CameraSample cloud="{filtered_cloud}"/>
+            <FusePointCloud nbv_camera_pose="{nbv_camera_pose}" cloud="{filtered_cloud}" map_ready="{map_ready}" global_map="{global_map}"/>
+            <Fallback name="ProceedOrSkip">
+              <Sequence name="PlanIfReady">
+                <IsTrue value="{map_ready}"/>
+                <ChangeObjectCenter child_frame="nbv_pose" parent_frame="base" pose="{nbv_camera_pose}"/>
+
+                <PlanArmMove ee_link="camera_color_optical_frame" frame_id="base" target_pose="{nbv_camera_pose}"/>
+               </Sequence>
+
+              <!-- No-op branch that always succeeds (so the Fallback, then Sequence, then Repeat continue) -->
+              <SetBlackboard output_key="noop" value="1"/>
+            </Fallback>
+          </Sequence>
+
+        </ReactiveSequence>
+      </Repeat>
+
+      <Sequence name="EvalIfEnabled">
+        <EvaluateReconstruction
+            do_eval="true"
+            map_cloud="{global_map}"
+            reference_file="/home/robot/ref_models/object_ref.pcd"
+        />
+      </Sequence>
+
+    </Sequence>
+
+  </BehaviorTree>
+</root>
