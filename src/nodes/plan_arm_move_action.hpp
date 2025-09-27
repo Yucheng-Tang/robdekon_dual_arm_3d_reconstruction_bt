@@ -73,10 +73,6 @@ private:
   using GetMotionPlan = moveit_msgs::srv::GetMotionPlan;
   using ExecTraj      = moveit_msgs::action::ExecuteTrajectory;
 
-  // MoveIt thin-client interfaces
-  using GetMotionPlan = moveit_msgs::srv::GetMotionPlan;
-  using ExecTraj      = moveit_msgs::action::ExecuteTrajectory;
-
   rclcpp::Client<GetMotionPlan>::SharedPtr plan_client_;
   std::string plan_service_name_;
 
@@ -92,7 +88,7 @@ private:
   
   // Available groups in your dual-arm setup
   std::vector<std::string> available_groups_ = {
-    "both_arm", 
+    "both_arms", 
     "left_fr3_arm", 
     "left_fr3_hand", 
     "right_fr3_arm", 

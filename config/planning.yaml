@@ -8,13 +8,13 @@
         publish_state_updates: true
         publish_transforms_updates: true
 
-      planning_pipelines: ["isaac_ros_cumotion", "ompl"]   # pick what you have
+      planning_pipelines: ["isaac_ros_cumotion", "ompl"]
       default_planning_pipeline: "ompl"
 
     one_arm_nbv_bt:
       # Default group configuration (can be overridden via BT ports)
-      group_name: "left_fr3_arm"     # Default to left arm
-      ee_link: "left_fr3_hand"       # Default end-effector
+      group_name: "left_fr3_arm"
+      ee_link: "left_fr3_hand"
 
       # Single arm planning configuration (OMPL + TRAC-IK)
       single_arm:
@@ -28,7 +28,7 @@
       # Dual arm planning configuration (cuMotion)
       dual_arm:
         pipeline_id: "isaac_ros_cumotion"
-        planner_id: ""  # cuMotion doesn't need planner_id
+        planner_id: ""
         planning_time: 8.0
         planning_attempts: 2
         max_velocity_scaling: 0.2
@@ -49,7 +49,7 @@
         right_fr3_arm: "right_fr3_hand"
         left_fr3_hand: "left_fr3_hand"
         right_fr3_hand: "right_fr3_hand"
-        both_arm: "left_fr3_hand"      # Default to left for dual arm
+        both_arms: "left_fr3_hand"
 
       # Fallback links for each group
       group_fallbacks:
@@ -57,165 +57,275 @@
         right_fr3_arm: ["right_fr3_hand", "right_fr3_link8"]
         left_fr3_hand: ["left_fr3_hand"]
         right_fr3_hand: ["right_fr3_hand"]
-        both_arm: ["left_fr3_hand", "right_fr3_hand", "left_fr3_link8", "right_fr3_link8"]
-        
-      # Gripper configuration
-      left_gripper:
-        ns: "/left/franka_gripper"
-        tcp_link: "left_fr3_hand_tcp"
-        
-      right_gripper:
-        ns: "/right/franka_gripper"
-        tcp_link: "right_fr3_hand_tcp"
-        
-      # Default gripper (for backward compatibility)
-      gripper_ns: "/left/franka_gripper"
-      tcp_link: "left_fr3_hand_tcp"
+        both_arms: ["left_fr3_hand", "right_fr3_hand", "left_fr3_link8", "right_fr3_link8"]
 
-      # Center for the object 
+      # ===============================
+      # LEFT ARM CONFIGURATION
+      # ===============================
+      left_arm:
+        # Gripper configuration
+        gripper:
+          ns: "/left/franka_gripper"
+          tcp_link: "left_fr3_hand_tcp"
+          grasp:
+            width: 0.001
+            speed: 0.10
+            force: 20.0
+            eps_inner: 0.005
+            eps_outer: 0.005
+          open:
+            width: 0.080
+            speed: 0.10
+
+        # Home position
+        home:
+          names: ["left_fr3_joint1","left_fr3_joint2","left_fr3_joint3","left_fr3_joint4","left_fr3_joint5","left_fr3_joint6","left_fr3_joint7"]
+          positions: [0.0, -0.785398, 0.0, -2.35619, 0.0, 1.5708, 0.45]
+
+        # Pick and place poses
+        pre_pick_pose:
+          frame_id: "base"
+          xyz: [0.45, 0.20, 0.45]
+          rpy: [3.14159, 0.00, 0.45]
+
+        pick_pose:
+          frame_id: "base"
+          xyz: [0.45, 0.20, 0.18]
+          rpy: [3.14159, 0.00, 0.45]
+
+        pre_place_pose:
+          frame_id: "base"
+          xyz: [0.4, -0.10, 0.45]
+          rpy: [3.14159, 0.00, 0.45]
+
+        place_pose:
+          frame_id: "base"
+          xyz: [0.4, -0.10, 0.2]
+          rpy: [3.14159, 0.00, 0.45]
+
+        # NBV observation poses
+        nbv_ready:
+          frame_id: "base"
+          xyz: [0.5, 0.3, 0.4]
+          rpy: [3.14159, 0.0, 0.785398]
+
+      # ===============================
+      # RIGHT ARM CONFIGURATION
+      # ===============================
+      right_arm:
+        # Gripper configuration
+        gripper:
+          ns: "/right/franka_gripper"
+          tcp_link: "right_fr3_hand_tcp"
+          grasp:
+            width: 0.001
+            speed: 0.10
+            force: 20.0
+            eps_inner: 0.005
+            eps_outer: 0.005
+          open:
+            width: 0.080
+            speed: 0.10
+
+        # Home position
+        home:
+          names: ["right_fr3_joint1","right_fr3_joint2","right_fr3_joint3","right_fr3_joint4","right_fr3_joint5","right_fr3_joint6","right_fr3_joint7"]
+          positions: [0.0, -0.785398, 0.0, -2.35619, 0.0, 1.5708, -0.45]
+
+        grasp_observe_pose:
+          frame_id: "base"
+          xyz: [0.35, -0.25, 0.40]
+          rpy: [2.8, 0.3, -1.2]
+
+        # Pick and place poses (mirrored from left)
+        pre_pick_pose:
+          frame_id: "base"
+          xyz: [0.45, 0.20, 0.45]
+          rpy: [3.14159, 0.00, -0.45]
+
+        pick_pose:
+          frame_id: "base"
+          xyz: [0.45, -0.20, 0.18]
+          rpy: [3.14159, 0.00, -0.45]
+
+        pre_place_pose:
+          frame_id: "base"
+          xyz: [0.4, 0.10, 0.45]
+          rpy: [3.14159, 0.00, -0.45]
+
+        place_pose:
+          frame_id: "base"
+          xyz: [0.4, 0.10, 0.2]
+          rpy: [3.14159, 0.00, -0.45]
+
+        # NBV observation poses
+        nbv_ready:
+          frame_id: "base"
+          xyz: [0.5, -0.3, 0.4]
+          rpy: [3.14159, 0.0, -0.785398]
+
+      # ===============================
+      # BOTH ARM CONFIGURATION
+      # ===============================
+      both_arms:
+        # Home position (both arms)
+        home:
+          names: [
+            "left_fr3_joint1","left_fr3_joint2","left_fr3_joint3","left_fr3_joint4","left_fr3_joint5","left_fr3_joint6","left_fr3_joint7",
+            "right_fr3_joint1","right_fr3_joint2","right_fr3_joint3","right_fr3_joint4","right_fr3_joint5","right_fr3_joint6","right_fr3_joint7"
+          ]
+          positions: [
+            0.0, -0.785398, 0.0, -2.35619, 0.0, 1.5708, 0.45,    # Left arm
+            0.0, -0.785398, 0.0, -2.35619, 0.0, 1.5708, -0.45    # Right arm
+          ]
+
+        # Dual-arm ready position
+        dual_ready:
+          left_pose:
+            frame_id: "base"
+            xyz: [0.4, -0.2, 0.5]
+            rpy: [3.14159, 0.0, 0.0]
+          right_pose:
+            frame_id: "base"
+            xyz: [0.4, 0.2, 0.5]
+            rpy: [3.14159, 0.0, 0.0]
+
+        # Collaborative picking (both arms work together)
+        collaborative_pick:
+          left_pose:
+            frame_id: "base"
+            xyz: [0.5, 0.15, 0.2]
+            rpy: [3.14159, 0.0, 0.785398]
+          right_pose:
+            frame_id: "base"
+            xyz: [0.5, -0.15, 0.2]
+            rpy: [3.14159, 0.0, -0.785398]
+
+        # Transport position (carrying object together)
+        transport_pose:
+          left_pose:
+            frame_id: "base"
+            xyz: [0.3, 0.1, 0.35]
+            rpy: [3.14159, 0.0, 0.0]
+          right_pose:
+            frame_id: "base"
+            xyz: [0.3, -0.1, 0.35]
+            rpy: [3.14159, 0.0, 0.0]
+
+        grasp_observe_pose:
+          left_pose:
+              frame_id: "base"
+              xyz: [-0.2, 0.0, 0.7]
+              rpy: [3.14159, -0.3, 0.0]
+          right_pose:
+              frame_id: "base"
+              xyz: [0.1, 0.4, 0.60]
+              rpy: [3.14159, 0.0, 0.0]
+
+        # Dual-arm observation for NBV
+        nbv_observe:
+          left_pose:
+            frame_id: "base"
+            xyz: [0.6, 0.25, 0.4]
+            rpy: [3.14159, 0.3, 0.785398]
+          right_pose:
+            frame_id: "base"
+            xyz: [0.6, -0.25, 0.4]
+            rpy: [3.14159, 0.3, -0.785398]
+
+      # ===============================
+      # COMMON CONFIGURATION
+      # ===============================
+      # Object center
       object_center:
         frame: nbv_object_center
         rebroadcast_ms: 200
-
         object_center_pose:
           frame_id: "base"
           xyz: [0.35, 0.0, 0.10]
           rpy: [0.0, 0.0, 0.0]
 
-      # pick (close)
-      grasp:
-        width: 0.001 # 0.005 # 0.030
-        speed: 0.10
-        force: 20.0
-        eps_inner: 0.005
-        eps_outer: 0.005
-
-      # place (open)
-      open:
-        width: 0.080
-        speed: 0.10
-
-      # optional proxy object behavior (for nbv planning)
+      # Proxy object behavior
       attach_proxy: false
       detach_proxy: false
       proxy_radius: 0.03
 
-
-
-      pre_pick_pose:
-        frame_id: "base"
-        xyz: [0.45, 0.20, 0.45]
-        rpy: [3.14159, 0.00, 0.45]
-
-      pick_pose:
-        frame_id: "base"
-        xyz: [0.45, 0.20, 0.18]
-        rpy: [3.14159, 0.00, 0.45]
-
-      pre_place_pose:
-        frame_id: "base"
-        xyz: [0.4, -0.10, 0.45]
-        rpy: [3.14159, 0.00, 0.45]
-
-      place_pose:
-        frame_id: "base"
-        xyz: [0.4, -0.10, 0.2]
-        rpy: [3.14159, 0.00, 0.45]
-
-      home:
-        names:     ["fr3_joint1","fr3_joint2","fr3_joint3","fr3_joint4","fr3_joint5","fr3_joint6","fr3_joint7"]
-        positions: [ 0.0, -0.785398, 0.0, -2.35619, 0.0, 1.5708, 0.45 ]
-
-      # Camera related params
-      nbv_srv:   "/nbv/compute"      # plug your service here
-      fuse_srv:  "/fusion/fuse"
+      # Camera and NBV services
+      nbv_srv: "/nbv/compute"
+      fuse_srv: "/fusion/fuse"
       coverage_threshold: 0.99
 
       sample:
-        # Camera IO
         camera:
-          topic: "/camera/camera/depth/color/points"   # RealSense organized point cloud
-          working_frame: "base"                 # transform cloud into this frame
-          publish_topic: "/nbv/filtered_cloud"  # output topic
-          voxel_leaf: 0.0                      # 0 disables voxel downsampling
+          topic: "/camera/camera/depth/color/points"
+          working_frame: "base"
+          publish_topic: "/nbv/filtered_cloud"
+          voxel_leaf: 0.0
 
-        # Desk removal (z>height+margin in working_frame)
         desk:
           enable: true
           height: 0.0
           margin: 0.012
 
-        # ROI cropping
         roi:
-          box:                    # one arm test
+          box:
             enable: true
-            min: [ 0.2, -0.15, 0.00]
-            max: [ 0.5,  0.15, 0.20]
+            min: [0.2, -0.15, 0.00]
+            max: [0.5, 0.15, 0.20]
           sphere:
             enable: false
-            frame: "fr3_hand"     # center on TCP (or provide any frame)
+            frame: "left_fr3_hand"
             radius: 0.30
 
-        # Robot masking
         robot_mask:
           enable: false
-          mode: "spheres"         # "spheres" or "mesh"
+          mode: "spheres"
+          frames: ["left_fr3_link2", "left_fr3_link3", "left_fr3_link4", "left_fr3_link5", "left_fr3_hand",
+                   "right_fr3_link2", "right_fr3_link3", "right_fr3_link4", "right_fr3_link5", "right_fr3_hand"]
+          radii: [0.09, 0.09, 0.09, 0.08, 0.07,
+                  0.09, 0.09, 0.09, 0.08, 0.07]
+          mesh_probe_radius: 0.01
 
-          # Spherical masks (used when mode=="spheres")
-          frames: ["fr3_link2", "fr3_link3", "fr3_link4", "fr3_link5", "fr3_hand"]
-          radii:  [ 0.09,        0.09,        0.09,        0.08,        0.07     ]
-
-          # Mesh mask settings (used when mode=="mesh")
-          mesh_probe_radius: 0.01   # m, sphere probe for FCL collision tests
-
-        # Attached-object mask near TCP
         attached_mask:
           enable: true
           radius: 0.05
 
-        # Where to read joint states for mesh masking
-        joint_states_topic: "/joint_states"   
+        joint_states_topic: "/joint_states"
 
         save:
           enable: true
           dir: /tmp/nbv_scans
           prefix: filtered
           ascii: false
+
         nbv_service:
-          name: /nbv_ros2_node_trigger 
+          name: /nbv_ros2_node_trigger
 
       fuse:
-        input_topic: "/nbv/filtered_cloud"   # from CameraSample
-        map_topic:   "/nbv/global_map"
+        input_topic: "/nbv/filtered_cloud"
+        map_topic: "/nbv/global_map"
         aligned_topic: "/nbv/aligned_cloud"
-        map_frame:   "base"
-
-        # Downsampling
-        input_leaf: 0.0       # m (downsample incoming scans)
-        map_leaf:   0.0       # m (downsample after merge)
-
-        # ICP / GICP
+        map_frame: "base"
+        input_leaf: 0.0
+        map_leaf: 0.0
         icp:
           use_gicp: true
           max_iter: 50
-          max_corr_dist: 0.05     # m
+          max_corr_dist: 0.05
           trans_eps: 1.0e-6
           fitness_eps: 1.0e-6
-          max_fitness: 0.01       # reject merge if worse than this
-
-        # Behavior
+          max_fitness: 0.01
         reset_on_empty: false
         save_pcd_on_success: false
         save_pcd_path: "/tmp/nbv_global_map.pcd"
-
         nbv_service:
-          name: /nbv_ros2_node_trigger 
+          name: /nbv_ros2_node_trigger
 
       eval:
         enable: true
-        reference_file: "/home/robot/ref_models/object_ref.pcd"   # or .stl
-        reference_type: "auto"     # auto|pcd|stl
-        sample_points: 100000      # for STL
-        leaf_map: 0.0              # 0 = no ds
+        reference_file: "/home/robot/ref_models/object_ref.pcd"
+        reference_type: "auto"
+        sample_points: 100000
+        leaf_map: 0.0
         leaf_ref: 0.0
-        dist_thresh: 0.01          # m
+        dist_thresh: 0.01

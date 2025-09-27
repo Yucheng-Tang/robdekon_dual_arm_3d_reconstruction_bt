@@ -71,14 +71,14 @@ void PlanArmMoveAction::initializeGroupConfigurations()
   get_or_default(node_, "one_arm_nbv_bt.group_ee_links.right_fr3_arm", right_arm_ee, std::string("right_fr3_hand"));
   get_or_default(node_, "one_arm_nbv_bt.group_ee_links.left_fr3_hand", left_hand_ee, std::string("left_fr3_hand"));
   get_or_default(node_, "one_arm_nbv_bt.group_ee_links.right_fr3_hand", right_hand_ee, std::string("right_fr3_hand"));
-  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.both_arm", both_arm_ee, std::string("left_fr3_hand"));
+  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.both_arms", both_arm_ee, std::string("left_fr3_hand"));
 
   // Map groups to their default end-effector links
   group_ee_links_["left_fr3_arm"] = left_arm_ee;
   group_ee_links_["right_fr3_arm"] = right_arm_ee;
   group_ee_links_["left_fr3_hand"] = left_hand_ee;
   group_ee_links_["right_fr3_hand"] = right_hand_ee;
-  group_ee_links_["both_arm"] = both_arm_ee;
+  group_ee_links_["both_arms"] = both_arm_ee;
 
   // Load fallback links from YAML with defaults
   std::vector<std::string> left_arm_fallbacks, right_arm_fallbacks, left_hand_fallbacks, right_hand_fallbacks, both_arm_fallbacks;
@@ -90,7 +90,7 @@ void PlanArmMoveAction::initializeGroupConfigurations()
                  std::vector<std::string>{"left_fr3_hand"});
   get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.right_fr3_hand", right_hand_fallbacks, 
                  std::vector<std::string>{"right_fr3_hand"});
-  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.both_arm", both_arm_fallbacks, 
+  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.both_arms", both_arm_fallbacks, 
                  std::vector<std::string>{"left_fr3_hand", "right_fr3_hand", "left_fr3_link8", "right_fr3_link8"});
 
   // Setup fallback links for each group
@@ -98,7 +98,7 @@ void PlanArmMoveAction::initializeGroupConfigurations()
   group_fallback_links_["right_fr3_arm"] = right_arm_fallbacks;
   group_fallback_links_["left_fr3_hand"] = left_hand_fallbacks;
   group_fallback_links_["right_fr3_hand"] = right_hand_fallbacks;
-  group_fallback_links_["both_arm"] = both_arm_fallbacks;
+  group_fallback_links_["both_arms"] = both_arm_fallbacks;
 
   // Log the loaded configuration for debugging
   RCLCPP_INFO(node_->get_logger(), "Loaded planning configurations:");
@@ -112,7 +112,7 @@ void PlanArmMoveAction::initializeGroupConfigurations()
 
 std::string PlanArmMoveAction::getGroupType(const std::string& group_name)
 {
-  if (group_name == "both_arm") {
+  if (group_name == "both_arms") {
     return "dual_arm";
   } else if (group_name == "left_fr3_hand" || group_name == "right_fr3_hand") {
     return "hand";
@@ -287,7 +287,7 @@ bool PlanArmMoveAction::transformTargetToLink_(const geometry_msgs::msg::PoseSta
   geometry_msgs::msg::TransformStamped T_to_from;
   try {
     // time 0 = latest; these are fixed links if attached in URDF/TF
-    T_to_from = tf_buffer_->lookupTransform(to_link, from_link, tf2::TimePointZero, std::chrono::milliseconds(200));
+    T_to_from = tf_buffer_->lookupTransform(to_link, from_link, tf2::TimePointZero, std::chrono::milliseconds(1000));
   } catch (const std::exception& e) {
     RCLCPP_WARN(node_->get_logger(),
                 "PlanArmMove: TF lookup '%s' <- '%s' failed: %s",
@@ -415,7 +415,7 @@ BT::NodeStatus PlanArmMoveAction::tick()
   if (!config.planner_id.empty())  req.planner_id = config.planner_id;
 
   // Parse target pose(s) based on group type
-  if (group_name == "both_arm") {
+  if (group_name == "both_arms") {
     // Dual-arm planning: need two targets
     geometry_msgs::msg::PoseStamped left_target, right_target;
     if (!parseDualArmTargets(group_name, left_target, right_target)) {
@@ -512,9 +512,9 @@ BT::NodeStatus PlanArmMoveAction::tick()
     
     // Build dual-arm goal constraints
     auto left_goal = kinematic_constraints::constructGoalConstraints(
-                      "left_fr3_hand", left_target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
+                      left_ee_link, left_target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
     auto right_goal = kinematic_constraints::constructGoalConstraints(
-                       "right_fr3_hand", right_target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
+                      right_ee_link, right_target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
     
     req.goal_constraints.push_back(left_goal);
     req.goal_constraints.push_back(right_goal);
@@ -590,6 +590,10 @@ BT::NodeStatus PlanArmMoveAction::tick()
         }
       }
     }
+  auto goal = kinematic_constraints::constructGoalConstraints(
+              ee_link, target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
+  req.goal_constraints.push_back(goal);
+  }
 
   // Call planning service
   auto sreq = std::make_shared<GetMotionPlan::Request>();

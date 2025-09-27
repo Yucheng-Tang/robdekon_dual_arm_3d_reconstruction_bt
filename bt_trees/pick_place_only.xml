@@ -25,14 +25,20 @@
         obstacle_size="[0.26 0.26 0.025]"
         obstacle_pose="[0.0 0.0 0 1 0 0 0]"/> -->
 
-      <!-- <EmitPoseParam ns="one_arm_nbv_bt.pre_pick_pose" target="{target}"/> -->
-       <PlanArmMove 
-          group_name="both_arm" 
-          ns="one_arm_nbv_bt.both_arm.home"/>
+      <!-- Move both arms to home position first -->
+      <!-- <MoveToJoints ns="one_arm_nbv_bt.both_arm.home"/> -->
+
+      <!-- Move both arms to perception/observation pose -->
+      <!-- This uses dual-arm coordinated planning with cuMotion -->
+      <PlanArmMove 
+          group_name="both_arms"
+          planner="cumotion"
+          ns="one_arm_nbv_bt.both_arms.grasp_observe_pose"/>
 
       <PlanArmMove 
-            group_name="left_fr3_arm"
-            ns="one_arm_nbv_bt.left_arm.pre_pick_pose"/>
+          group_name="right_fr3_arm"
+          planner="ompl"
+          ns="one_arm_nbv_bt.right_arm.pre_pick_pose"/>
 
     </Sequence>
 

@@ -29,8 +29,8 @@ int main(int argc, char** argv){
   opts.automatically_declare_parameters_from_overrides(true);
   auto node = rclcpp::Node::make_shared("one_arm_nbv_bt_node", opts);
 
-  std::string pkg = ament_index_cpp::get_package_share_directory("one_arm_nbv_bt");
-  std::string bt_xml = pkg + "/bt_trees/pick_place_manual_sampling.xml";  // pick_place_manual_sampling pick_place_only
+  std::string pkg = ament_index_cpp::get_package_share_directory("dual_arm_nbv_bt");
+  std::string bt_xml = pkg + "/bt_trees/pick_place_only.xml";  // pick_place_manual_sampling pick_place_only
 
   BT::BehaviorTreeFactory f;
   f.registerNodeType<bt_nodes::CameraSampleAction>("CameraSample");

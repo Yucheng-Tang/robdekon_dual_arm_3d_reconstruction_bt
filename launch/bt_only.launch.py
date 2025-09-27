@@ -6,12 +6,12 @@ from ament_index_python.packages import get_package_share_directory
 import os
 
 def generate_launch_description():
-    pkg_bt = get_package_share_directory('one_arm_nbv_bt')
+    pkg_bt = get_package_share_directory('dual_arm_nbv_bt')
 
     # Xacro paths
-    franka_desc = get_package_share_directory('franka_description')
-    urdf_xacro  = os.path.join(franka_desc, 'robots', 'fr3', 'fr3.urdf.xacro')
-    srdf_xacro  = os.path.join(franka_desc, 'robots', 'fr3', 'fr3.srdf.xacro')
+    franka_desc = get_package_share_directory('franka_cell_description')
+    urdf_xacro  = os.path.join(franka_desc, 'robots', 'parallel_fr3_iras_cell', 'parallel_fr3_iras_cell.urdf.xacro')
+    srdf_xacro  = os.path.join(franka_desc, 'robots', 'parallel_fr3_iras_cell', 'parallel_fr3_iras_cell.srdf.xacro')
 
     # Example args (ensure they are strings "true"/"false")
     robot_ip = "0.0.0.0"          # or LaunchConfiguration(...)
@@ -20,8 +20,8 @@ def generate_launch_description():
 
     # URDF
     franka_xacro_file = os.path.join(
-        get_package_share_directory('franka_description'),
-        'robots', 'fr3', 'fr3.urdf.xacro'
+        get_package_share_directory('franka_cell_description'),
+        'robots', 'parallel_fr3_iras_cell', 'parallel_fr3_iras_cell.urdf.xacro'
     )
 
     robot_description_config = Command(
@@ -34,8 +34,8 @@ def generate_launch_description():
 
     
     franka_semantic_xacro_file = os.path.join(
-        get_package_share_directory('franka_description'),
-        'robots', 'fr3', 'fr3.srdf.xacro'
+        get_package_share_directory('franka_cell_description'),
+        'robots', 'parallel_fr3_iras_cell', 'parallel_fr3_iras_cell.srdf.xacro'
     )
 
     robot_description_semantic_config = Command(
@@ -51,9 +51,9 @@ def generate_launch_description():
 
     return LaunchDescription([
         Node(
-            package='one_arm_nbv_bt',
+            package='dual_arm_nbv_bt',
             executable='nbv_bt_node',
-            name='one_arm_nbv_bt_node',
+            name='dual_arm_nbv_bt_node',
             output='screen',
             # parameters=[os.path.join(pkg_bt, 'config', 'planning.yaml')],
             parameters=[
