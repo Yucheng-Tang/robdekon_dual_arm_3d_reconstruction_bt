@@ -12,13 +12,65 @@
       default_planning_pipeline: "ompl"
 
     one_arm_nbv_bt:
-      controllers:
-        cm_ns: ""                      # e.g. "fr3" if you run namespaced
-        # Typical MoveIt controller (edit to match your system):
-        #   - arm trajectory controller exposed to MoveIt
-        #   - your impedance / hand-guiding controller (example names!)
-        moveit_arm_controller: "fr3_arm_controller"
-        handguide_controller:  "cartesian_impedance_controller"
+      # Default group configuration (can be overridden via BT ports)
+      group_name: "left_fr3_arm"     # Default to left arm
+      ee_link: "left_fr3_hand"       # Default end-effector
+
+      # Single arm planning configuration (OMPL + TRAC-IK)
+      single_arm:
+        pipeline_id: "ompl"
+        planner_id: "RRTConnectkConfigDefault"
+        planning_time: 5.0
+        planning_attempts: 3
+        max_velocity_scaling: 0.3
+        max_acceleration_scaling: 0.3
+
+      # Dual arm planning configuration (cuMotion)
+      dual_arm:
+        pipeline_id: "isaac_ros_cumotion"
+        planner_id: ""  # cuMotion doesn't need planner_id
+        planning_time: 8.0
+        planning_attempts: 2
+        max_velocity_scaling: 0.2
+        max_acceleration_scaling: 0.2
+
+      # Hand/gripper planning configuration
+      hand:
+        pipeline_id: "ompl"
+        planner_id: "RRTConnectkConfigDefault"
+        planning_time: 2.0
+        planning_attempts: 2
+        max_velocity_scaling: 0.5
+        max_acceleration_scaling: 0.5
+
+      # Group-specific end-effector links (used as defaults)
+      group_ee_links:
+        left_fr3_arm: "left_fr3_hand"
+        right_fr3_arm: "right_fr3_hand"
+        left_fr3_hand: "left_fr3_hand"
+        right_fr3_hand: "right_fr3_hand"
+        both_arm: "left_fr3_hand"      # Default to left for dual arm
+
+      # Fallback links for each group
+      group_fallbacks:
+        left_fr3_arm: ["left_fr3_hand", "left_fr3_link8"]
+        right_fr3_arm: ["right_fr3_hand", "right_fr3_link8"]
+        left_fr3_hand: ["left_fr3_hand"]
+        right_fr3_hand: ["right_fr3_hand"]
+        both_arm: ["left_fr3_hand", "right_fr3_hand", "left_fr3_link8", "right_fr3_link8"]
+        
+      # Gripper configuration
+      left_gripper:
+        ns: "/left/franka_gripper"
+        tcp_link: "left_fr3_hand_tcp"
+        
+      right_gripper:
+        ns: "/right/franka_gripper"
+        tcp_link: "right_fr3_hand_tcp"
+        
+      # Default gripper (for backward compatibility)
+      gripper_ns: "/left/franka_gripper"
+      tcp_link: "left_fr3_hand_tcp"
 
       # Center for the object 
       object_center:
@@ -29,15 +81,6 @@
           frame_id: "base"
           xyz: [0.35, 0.0, 0.10]
           rpy: [0.0, 0.0, 0.0]
-
-      # setup planner used by MoveIt2
-      pipeline_id: ""                   # or "isaac_ros_cumotion" etc. (empty = use move_group default)
-      planner_id:  "RRTConnectkConfigDefault" # "RRTConnectkConfigDefault"
-
-      group_name: "fr3_arm"     
-      ee_link:   "fr3_hand"
-      gripper_ns: "franka_gripper"         
-      tcp_link:  "fr3_hand_tcp"
 
       # pick (close)
       grasp:

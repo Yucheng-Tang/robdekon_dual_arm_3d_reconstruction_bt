@@ -17,6 +17,8 @@
 
 #include <string>
 #include <memory>
+#include <map>
+#include <vector>
 
 namespace bt_nodes {
 
@@ -30,19 +32,46 @@ public:
     return {
       BT::InputPort<geometry_msgs::msg::PoseStamped>("target"),
       BT::InputPort<geometry_msgs::msg::Pose>("target_pose"),     // NEW: plain Pose
+      BT::InputPort<geometry_msgs::msg::PoseStamped>("left_target"),   // NEW: for dual arm
+      BT::InputPort<geometry_msgs::msg::PoseStamped>("right_target"),  // NEW: for dual arm
       BT::InputPort<std::string>("frame_id"),   
       BT::InputPort<std::string>("ns", "bt_node"),
-      BT::InputPort<std::string>("ee_link")                
+      BT::InputPort<std::string>("ee_link"),
+      BT::InputPort<std::string>("right_ee_link"),
+      BT::InputPort<std::string>("left_ee_link"),
+      BT::InputPort<std::string>("group_name"),  // NEW: override group selection
+      BT::InputPort<std::string>("planner")               
     }; 
   }
 
   BT::NodeStatus tick() override;
 
 private:
+  // Planning configuration for different group types
+  struct PlanningConfig {
+    std::string pipeline_id;
+    std::string planner_id;
+    double planning_time;
+    int planning_attempts;
+    double vel_scale;
+    double acc_scale;
+  };
+
   bool ensureClients();
   bool pickPlanningService();
 
+  // Group type detection and configuration
+  std::string getGroupType(const std::string& group_name);
+  PlanningConfig getPlanningConfig(const std::string& group_type);
+  
+  // End-effector link resolution for different groups
+  std::string resolveEndEffectorLink(const std::string& group_name, const std::string& requested_ee_link);
+
   rclcpp::Node::SharedPtr node_;
+
+  // MoveIt thin-client interfaces
+  using GetMotionPlan = moveit_msgs::srv::GetMotionPlan;
+  using ExecTraj      = moveit_msgs::action::ExecuteTrajectory;
 
   // MoveIt thin-client interfaces
   using GetMotionPlan = moveit_msgs::srv::GetMotionPlan;
@@ -53,15 +82,22 @@ private:
 
   rclcpp_action::Client<ExecTraj>::SharedPtr exec_client_;
 
-  // parameters
-  std::string group_;
-  std::string ee_link_;
-  std::string pipeline_;     // "ompl" or "isaac_ros_cumotion"
-  std::string planner_id_;
-  double planning_time_;
-  int    planning_attempts_;
-  double vel_scale_;
-  double acc_scale_;
+  // Default parameters (can be overridden by group-specific configs)
+  std::string default_group_;
+  std::string default_ee_link_;
+  
+  // Group-specific configurations
+  std::map<std::string, PlanningConfig> group_configs_;
+  std::map<std::string, std::string> group_ee_links_;  // group -> default ee_link mapping
+  
+  // Available groups in your dual-arm setup
+  std::vector<std::string> available_groups_ = {
+    "both_arm", 
+    "left_fr3_arm", 
+    "left_fr3_hand", 
+    "right_fr3_arm", 
+    "right_fr3_hand"
+  };
 
   // Robot model / group for membership checks
   moveit::core::RobotModelPtr robot_model_;
@@ -71,8 +107,11 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-  // Optional fallback list (read from YAML if you like)
-  std::vector<std::string> ee_fallback_links_; // e.g. {"fr3_hand", "fr3_link8"}
+  // // Optional fallback list (read from YAML if you like)
+  // std::vector<std::string> ee_fallback_links_; // e.g. {"fr3_hand", "fr3_link8"}
+
+  // Fallback links for different arms
+  std::map<std::string, std::vector<std::string>> group_fallback_links_;
 
   bool ensureRobotModel_();
   bool linkInGroup_(const std::string& link, const std::string& group); 
@@ -81,6 +120,16 @@ private:
                             const std::string& from_link,
                             const std::string& to_link,
                             geometry_msgs::msg::PoseStamped& target_for_to_link);
+  
+  bool getDualArmPosesFromParams(const std::string& ns,
+                                geometry_msgs::msg::PoseStamped& left_target,
+                                geometry_msgs::msg::PoseStamped& right_target);
+
+  bool parseDualArmTargets(const std::string& group_name,
+                          geometry_msgs::msg::PoseStamped& left_target,
+                          geometry_msgs::msg::PoseStamped& right_target);
+
+  void initializeGroupConfigurations();
 };
 
 } // namespace bt_nodes

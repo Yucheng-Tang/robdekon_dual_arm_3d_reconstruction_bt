@@ -4,6 +4,7 @@
 
 #include <moveit/kinematic_constraints/utils.h>
 #include <moveit_msgs/msg/constraints.hpp>
+#include <tf2/LinearMath/Quaternion.h>
 
 #include <chrono>
 
@@ -19,19 +20,220 @@ PlanArmMoveAction::PlanArmMoveAction(const std::string& name,
 {
   node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
 
-  // Read parameters with fallbacks (do NOT declare here)
-  get_or_default(node_, "one_arm_nbv_bt.group_name",              group_,          std::string("fr3_arm"));
-  get_or_default(node_, "one_arm_nbv_bt.ee_link",                 ee_link_,        std::string("fr3_hand"));
-  get_or_default(node_, "one_arm_nbv_bt.pipeline_id",             pipeline_,       std::string("")); // empty -> let move_group choose
-  get_or_default(node_, "one_arm_nbv_bt.planner_id",              planner_id_,     std::string(""));
-  get_or_default(node_, "one_arm_nbv_bt.allowed_planning_time",   planning_time_,  2.0);
-  get_or_default(node_, "one_arm_nbv_bt.planning_attempts",       planning_attempts_, 1);
-  get_or_default(node_, "one_arm_nbv_bt.max_velocity_scaling",    vel_scale_,      0.3);
-  get_or_default(node_, "one_arm_nbv_bt.max_acceleration_scaling",acc_scale_,      0.3);
+  // Read default parameters
+  get_or_default(node_, "one_arm_nbv_bt.group_name", default_group_, std::string("left_fr3_arm"));
+  get_or_default(node_, "one_arm_nbv_bt.ee_link", default_ee_link_, std::string("left_fr3_hand"));
 
+  // Initialize group-specific configurations
+  initializeGroupConfigurations();
 
   // Create execute_trajectory action client; planning service is chosen lazily
   exec_client_ = rclcpp_action::create_client<ExecTraj>(node_, "/execute_trajectory");
+}
+
+void PlanArmMoveAction::initializeGroupConfigurations()
+{
+  // Configure single arm groups to use OMPL with TRAC-IK
+  PlanningConfig single_arm_config;
+  get_or_default(node_, "one_arm_nbv_bt.single_arm.pipeline_id", single_arm_config.pipeline_id, std::string("ompl"));
+  get_or_default(node_, "one_arm_nbv_bt.single_arm.planner_id", single_arm_config.planner_id, std::string("RRTConnectkConfigDefault"));
+  get_or_default(node_, "one_arm_nbv_bt.single_arm.planning_time", single_arm_config.planning_time, 5.0);
+  get_or_default(node_, "one_arm_nbv_bt.single_arm.planning_attempts", single_arm_config.planning_attempts, 3);
+  get_or_default(node_, "one_arm_nbv_bt.single_arm.max_velocity_scaling", single_arm_config.vel_scale, 0.3);
+  get_or_default(node_, "one_arm_nbv_bt.single_arm.max_acceleration_scaling", single_arm_config.acc_scale, 0.3);
+
+  // Configure dual arm group to use cuMotion
+  PlanningConfig dual_arm_config;
+  get_or_default(node_, "one_arm_nbv_bt.dual_arm.pipeline_id", dual_arm_config.pipeline_id, std::string("isaac_ros_cumotion"));
+  get_or_default(node_, "one_arm_nbv_bt.dual_arm.planner_id", dual_arm_config.planner_id, std::string(""));
+  get_or_default(node_, "one_arm_nbv_bt.dual_arm.planning_time", dual_arm_config.planning_time, 8.0);
+  get_or_default(node_, "one_arm_nbv_bt.dual_arm.planning_attempts", dual_arm_config.planning_attempts, 2);
+  get_or_default(node_, "one_arm_nbv_bt.dual_arm.max_velocity_scaling", dual_arm_config.vel_scale, 0.2);
+  get_or_default(node_, "one_arm_nbv_bt.dual_arm.max_acceleration_scaling", dual_arm_config.acc_scale, 0.2);
+
+  // Hand groups use OMPL but with faster settings for simple motions
+  PlanningConfig hand_config;
+  get_or_default(node_, "one_arm_nbv_bt.hand.pipeline_id", hand_config.pipeline_id, std::string("ompl"));
+  get_or_default(node_, "one_arm_nbv_bt.hand.planner_id", hand_config.planner_id, std::string("RRTConnectkConfigDefault"));
+  get_or_default(node_, "one_arm_nbv_bt.hand.planning_time", hand_config.planning_time, 2.0);
+  get_or_default(node_, "one_arm_nbv_bt.hand.planning_attempts", hand_config.planning_attempts, 2);
+  get_or_default(node_, "one_arm_nbv_bt.hand.max_velocity_scaling", hand_config.vel_scale, 0.5);
+  get_or_default(node_, "one_arm_nbv_bt.hand.max_acceleration_scaling", hand_config.acc_scale, 0.5);
+
+  // Map group types to configurations
+  group_configs_["single_arm"] = single_arm_config;
+  group_configs_["dual_arm"] = dual_arm_config;
+  group_configs_["hand"] = hand_config;
+
+  // Load end-effector links from YAML with defaults
+  std::string left_arm_ee, right_arm_ee, left_hand_ee, right_hand_ee, both_arm_ee;
+  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.left_fr3_arm", left_arm_ee, std::string("left_fr3_hand"));
+  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.right_fr3_arm", right_arm_ee, std::string("right_fr3_hand"));
+  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.left_fr3_hand", left_hand_ee, std::string("left_fr3_hand"));
+  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.right_fr3_hand", right_hand_ee, std::string("right_fr3_hand"));
+  get_or_default(node_, "one_arm_nbv_bt.group_ee_links.both_arm", both_arm_ee, std::string("left_fr3_hand"));
+
+  // Map groups to their default end-effector links
+  group_ee_links_["left_fr3_arm"] = left_arm_ee;
+  group_ee_links_["right_fr3_arm"] = right_arm_ee;
+  group_ee_links_["left_fr3_hand"] = left_hand_ee;
+  group_ee_links_["right_fr3_hand"] = right_hand_ee;
+  group_ee_links_["both_arm"] = both_arm_ee;
+
+  // Load fallback links from YAML with defaults
+  std::vector<std::string> left_arm_fallbacks, right_arm_fallbacks, left_hand_fallbacks, right_hand_fallbacks, both_arm_fallbacks;
+  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.left_fr3_arm", left_arm_fallbacks, 
+                 std::vector<std::string>{"left_fr3_hand", "left_fr3_link8"});
+  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.right_fr3_arm", right_arm_fallbacks, 
+                 std::vector<std::string>{"right_fr3_hand", "right_fr3_link8"});
+  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.left_fr3_hand", left_hand_fallbacks, 
+                 std::vector<std::string>{"left_fr3_hand"});
+  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.right_fr3_hand", right_hand_fallbacks, 
+                 std::vector<std::string>{"right_fr3_hand"});
+  get_or_default(node_, "one_arm_nbv_bt.group_fallbacks.both_arm", both_arm_fallbacks, 
+                 std::vector<std::string>{"left_fr3_hand", "right_fr3_hand", "left_fr3_link8", "right_fr3_link8"});
+
+  // Setup fallback links for each group
+  group_fallback_links_["left_fr3_arm"] = left_arm_fallbacks;
+  group_fallback_links_["right_fr3_arm"] = right_arm_fallbacks;
+  group_fallback_links_["left_fr3_hand"] = left_hand_fallbacks;
+  group_fallback_links_["right_fr3_hand"] = right_hand_fallbacks;
+  group_fallback_links_["both_arm"] = both_arm_fallbacks;
+
+  // Log the loaded configuration for debugging
+  RCLCPP_INFO(node_->get_logger(), "Loaded planning configurations:");
+  RCLCPP_INFO(node_->get_logger(), "  Single arm: %s pipeline, %.1fs planning time", 
+              single_arm_config.pipeline_id.c_str(), single_arm_config.planning_time);
+  RCLCPP_INFO(node_->get_logger(), "  Dual arm: %s pipeline, %.1fs planning time", 
+              dual_arm_config.pipeline_id.c_str(), dual_arm_config.planning_time);
+  RCLCPP_INFO(node_->get_logger(), "  Hand: %s pipeline, %.1fs planning time", 
+              hand_config.pipeline_id.c_str(), hand_config.planning_time);
+}
+
+std::string PlanArmMoveAction::getGroupType(const std::string& group_name)
+{
+  if (group_name == "both_arm") {
+    return "dual_arm";
+  } else if (group_name == "left_fr3_hand" || group_name == "right_fr3_hand") {
+    return "hand";
+  } else if (group_name == "left_fr3_arm" || group_name == "right_fr3_arm") {
+    return "single_arm";
+  }
+  
+  RCLCPP_WARN(node_->get_logger(), 
+              "Unknown group '%s', defaulting to single_arm configuration", 
+              group_name.c_str());
+  return "single_arm";
+}
+
+PlanArmMoveAction::PlanningConfig PlanArmMoveAction::getPlanningConfig(const std::string& group_type)
+{
+  auto it = group_configs_.find(group_type);
+  if (it != group_configs_.end()) {
+    return it->second;
+  }
+  
+  // Fallback to single arm config
+  return group_configs_["single_arm"];
+}
+
+std::string PlanArmMoveAction::resolveEndEffectorLink(const std::string& group_name, 
+                                                     const std::string& requested_ee_link)
+{
+  if (!requested_ee_link.empty()) {
+    return requested_ee_link;
+  }
+  
+  auto it = group_ee_links_.find(group_name);
+  if (it != group_ee_links_.end()) {
+    return it->second;
+  }
+  
+  RCLCPP_WARN(node_->get_logger(), 
+              "No default ee_link for group '%s', using fallback", 
+              group_name.c_str());
+  return default_ee_link_;
+}
+
+bool PlanArmMoveAction::getDualArmPosesFromParams(const std::string& ns,
+                                                 geometry_msgs::msg::PoseStamped& left_target,
+                                                 geometry_msgs::msg::PoseStamped& right_target)
+{
+  // Load left arm pose
+  std::string left_frame, right_frame;
+  std::vector<double> left_xyz, left_rpy, right_xyz, right_rpy;
+  
+  get_or_default(node_, ns + ".left_pose.frame_id", left_frame, std::string("base"));
+  get_or_default(node_, ns + ".left_pose.xyz", left_xyz, std::vector<double>{0.4, 0.2, 0.3});
+  get_or_default(node_, ns + ".left_pose.rpy", left_rpy, std::vector<double>{M_PI, 0.0, 0.0});
+  
+  get_or_default(node_, ns + ".right_pose.frame_id", right_frame, std::string("base"));
+  get_or_default(node_, ns + ".right_pose.xyz", right_xyz, std::vector<double>{0.4, -0.2, 0.3});
+  get_or_default(node_, ns + ".right_pose.rpy", right_rpy, std::vector<double>{M_PI, 0.0, 0.0});
+  
+  if (left_xyz.size() != 3 || left_rpy.size() != 3 || right_xyz.size() != 3 || right_rpy.size() != 3) {
+    RCLCPP_ERROR(node_->get_logger(), "Invalid dual-arm pose parameters under '%s'", ns.c_str());
+    return false;
+  }
+  
+  // Build left target
+  left_target.header.frame_id = left_frame;
+  left_target.header.stamp = node_->now();
+  left_target.pose.position.x = left_xyz[0];
+  left_target.pose.position.y = left_xyz[1];
+  left_target.pose.position.z = left_xyz[2];
+  
+  tf2::Quaternion left_q;
+  left_q.setRPY(left_rpy[0], left_rpy[1], left_rpy[2]);
+  left_target.pose.orientation.x = left_q.x();
+  left_target.pose.orientation.y = left_q.y();
+  left_target.pose.orientation.z = left_q.z();
+  left_target.pose.orientation.w = left_q.w();
+  
+  // Build right target
+  right_target.header.frame_id = right_frame;
+  right_target.header.stamp = node_->now();
+  right_target.pose.position.x = right_xyz[0];
+  right_target.pose.position.y = right_xyz[1];
+  right_target.pose.position.z = right_xyz[2];
+  
+  tf2::Quaternion right_q;
+  right_q.setRPY(right_rpy[0], right_rpy[1], right_rpy[2]);
+  right_target.pose.orientation.x = right_q.x();
+  right_target.pose.orientation.y = right_q.y();
+  right_target.pose.orientation.z = right_q.z();
+  right_target.pose.orientation.w = right_q.w();
+  
+  return true;
+}
+
+bool PlanArmMoveAction::parseDualArmTargets(const std::string& group_name,
+                                           geometry_msgs::msg::PoseStamped& left_target,
+                                           geometry_msgs::msg::PoseStamped& right_target)
+{
+  // Check for explicit dual-arm targets from BT ports
+  if (auto left_ps = getInput<geometry_msgs::msg::PoseStamped>("left_target")) {
+    if (auto right_ps = getInput<geometry_msgs::msg::PoseStamped>("right_target")) {
+      left_target = *left_ps;
+      right_target = *right_ps;
+      RCLCPP_INFO(node_->get_logger(), "Using explicit dual-arm targets from BT ports");
+      return true;
+    }
+  }
+  
+  // Try to load from parameters
+  std::string ns = "bt_node";
+  (void)getInput("ns", ns);
+  
+  if (getDualArmPosesFromParams(ns, left_target, right_target)) {
+    RCLCPP_INFO(node_->get_logger(), "Using dual-arm targets from parameters '%s'", ns.c_str());
+    return true;
+  }
+  
+  RCLCPP_ERROR(node_->get_logger(), 
+               "No dual-arm targets found for group '%s'. Provide 'left_target'/'right_target' ports or configure '%s.left_pose'/'%s.right_pose' parameters",
+               group_name.c_str(), ns.c_str(), ns.c_str());
+  return false;
 }
 
 bool PlanArmMoveAction::ensureRobotModel_()
@@ -170,110 +372,239 @@ BT::NodeStatus PlanArmMoveAction::tick()
     return BT::NodeStatus::FAILURE;
   }
 
-  geometry_msgs::msg::PoseStamped target;
-  // (A) Prefer PoseStamped directly from port
-  if (auto ps = getInput<geometry_msgs::msg::PoseStamped>("target")){
-    target = *ps;
-    RCLCPP_INFO(node_->get_logger(), "PlanArmMove: using PoseStamped from 'target' port");
+  // Determine which group to use
+  std::string group_name = default_group_;
+  if (auto g = getInput<std::string>("group_name")) {
+    group_name = *g;
   }
-  // (B) Otherwise accept Pose + frame_id (default "base")
-  else if (auto p = getInput<geometry_msgs::msg::Pose>("target_pose")){
-    std::string frame = "base";
-    (void)getInput("frame_id", frame);  // optional override
-    target.header.stamp = node_->now();
-    target.header.frame_id = frame;
-    target.pose = *p;
-    RCLCPP_INFO(node_->get_logger(), "Pose: %s", poseToString(target.pose).c_str());
-    RCLCPP_INFO(node_->get_logger(), "PlanArmMove: using Pose from 'target_pose' with frame_id='%s'", frame.c_str());
+
+  // Validate group exists
+  if (std::find(available_groups_.begin(), available_groups_.end(), group_name) == available_groups_.end()) {
+    RCLCPP_ERROR(node_->get_logger(), 
+                 "PlanArmMove: Unknown group '%s'. Available groups: both_arm, left_fr3_arm, right_fr3_arm, left_fr3_hand, right_fr3_hand", 
+                 group_name.c_str());
+    return BT::NodeStatus::FAILURE;
   }
-  // (C) Fallback to YAML params under ns
-  else {
-    std::string ns = "bt_node";
-    (void)getInput("ns", ns);
-    if (!bt_nodes::get_pose_param(node_, target, ns)){
-      RCLCPP_ERROR(node_->get_logger(),
-                   "PlanArmMove: no 'target' or 'target_pose' provided, and params under '%s' not found",
-                   ns.c_str());
-      return BT::NodeStatus::FAILURE;
+
+  // Get planning configuration for this group type
+  std::string group_type = getGroupType(group_name);
+  PlanningConfig config = getPlanningConfig(group_type);
+
+  // Allow planner override from BT port
+  if (auto planner_override = getInput<std::string>("planner")) {
+    if (*planner_override == "ompl") {
+      config.pipeline_id = "ompl";
+      config.planner_id = "RRTConnectkConfigDefault";
+    } else if (*planner_override == "cumotion") {
+      config.pipeline_id = "isaac_ros_cumotion";
+      config.planner_id = "";
     }
-    RCLCPP_INFO(node_->get_logger(), "PlanArmMove: using target from parameters namespace '%s'", ns.c_str());
+    RCLCPP_INFO(node_->get_logger(), "PlanArmMove: planner override to %s", planner_override->c_str());
   }
 
-  std::string ee_link = ee_link_; 
-  std::string ee_override;
-  if (getInput("ee_link", ee_override) && !ee_override.empty()) {
-    ee_link = ee_override;
-    RCLCPP_INFO(node_->get_logger(),
-                "PlanArmMove: overriding ee_link with BT port: '%s'", ee_link.c_str());
-  }
-
-  if (!linkInGroup_(ee_link, group_))
-  {
-    // Read or default fallback list
-    if (ee_fallback_links_.empty()) {
-      // Optionally read from YAML once:
-      // get_or_default(node_, "one_arm_nbv_bt.ee_fallback_links", ee_fallback_links_,
-      //                std::vector<std::string>{});
-      ee_fallback_links_ = {"fr3_hand", "fr3_link8"}; // sensible defaults for Franka
-    }
-
-    bool switched = false;
-    for (const auto& fb : ee_fallback_links_)
-    {
-      if (!linkInGroup_(fb, group_)) continue;
-
-      geometry_msgs::msg::PoseStamped target_fb;
-      if (transformTargetToLink_(target, /*from_link=*/ee_link, /*to_link=*/fb, target_fb))
-      {
-        RCLCPP_WARN(node_->get_logger(),
-          "PlanArmMove: link '%s' is not in group '%s'. "
-          "Transformed goal to fallback link '%s'.",
-          ee_link.c_str(), group_.c_str(), fb.c_str());
-
-        target  = target_fb; // use transformed pose
-        ee_link = fb;        // use fallback link for constraints
-        switched = true;
-        break;
-      }
-    }
-
-    if (!switched) {
-      RCLCPP_ERROR(node_->get_logger(),
-        "PlanArmMove: ee_link '%s' not in group '%s' and no usable fallback link found.",
-        ee_link.c_str(), group_.c_str());
-      return BT::NodeStatus::FAILURE;
-    }
-  }
-
-  // Build MotionPlanRequest
+  // Build MotionPlanRequest with group-specific configuration
   moveit_msgs::msg::MotionPlanRequest req;
-  req.group_name            = group_;
-  req.allowed_planning_time = planning_time_;
-  req.num_planning_attempts = planning_attempts_;
-  req.max_velocity_scaling_factor     = vel_scale_;
-  req.max_acceleration_scaling_factor = acc_scale_;
+  req.group_name = group_name;
+  req.allowed_planning_time = config.planning_time;
+  req.num_planning_attempts = config.planning_attempts;
+  req.max_velocity_scaling_factor = config.vel_scale;
+  req.max_acceleration_scaling_factor = config.acc_scale;
   req.start_state.is_diff = true;
 
-  if (!pipeline_.empty())   req.pipeline_id = pipeline_;
-  if (!planner_id_.empty()) req.planner_id  = planner_id_;
+  if (!config.pipeline_id.empty()) req.pipeline_id = config.pipeline_id;
+  if (!config.planner_id.empty())  req.planner_id = config.planner_id;
 
-  // Goal constraints from pose
-  auto goal = kinematic_constraints::constructGoalConstraints(
-                ee_link, target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
-  req.goal_constraints.push_back(goal);
+  // Parse target pose(s) based on group type
+  if (group_name == "both_arm") {
+    // Dual-arm planning: need two targets
+    geometry_msgs::msg::PoseStamped left_target, right_target;
+    if (!parseDualArmTargets(group_name, left_target, right_target)) {
+      return BT::NodeStatus::FAILURE;
+    }
+
+    // Resolve end-effector links for both arms with separate overrides
+    std::string left_ee_override, right_ee_override;
+    (void)getInput("left_ee_link", left_ee_override);
+    (void)getInput("right_ee_link", right_ee_override);
+    
+    std::string left_ee_link = resolveEndEffectorLink("left_fr3_arm", left_ee_override);
+    std::string right_ee_link = resolveEndEffectorLink("right_fr3_arm", right_ee_override);
+    
+    // Validate and handle fallbacks for left arm
+    if (!linkInGroup_(left_ee_link, group_name))
+    {
+        auto fallback_it = group_fallback_links_.find("left_fr3_arm");
+        if (fallback_it != group_fallback_links_.end()) {
+            bool switched = false;
+            for (const auto& fb : fallback_it->second)
+            {
+                if (!linkInGroup_(fb, group_name)) continue;
+
+                geometry_msgs::msg::PoseStamped left_target_fb;
+                if (transformTargetToLink_(left_target, left_ee_link, fb, left_target_fb))
+                {
+                    RCLCPP_WARN(node_->get_logger(),
+                      "PlanArmMove: left ee_link '%s' is not in group '%s'. "
+                      "Transformed left target to fallback link '%s'.",
+                      left_ee_link.c_str(), group_name.c_str(), fb.c_str());
+
+                    left_target = left_target_fb;
+                    left_ee_link = fb;
+                    switched = true;
+                    break;
+                }
+            }
+
+            if (!switched) {
+                RCLCPP_ERROR(node_->get_logger(),
+                  "PlanArmMove: left ee_link '%s' not in group '%s' and no usable fallback link found.",
+                  left_ee_link.c_str(), group_name.c_str());
+                return BT::NodeStatus::FAILURE;
+            }
+        }
+        else {
+            RCLCPP_ERROR(node_->get_logger(),
+              "PlanArmMove: left ee_link '%s' not in group '%s' and no fallbacks configured.",
+              left_ee_link.c_str(), group_name.c_str());
+            return BT::NodeStatus::FAILURE;
+        }
+    }
+    
+    // Validate and handle fallbacks for right arm
+    if (!linkInGroup_(right_ee_link, group_name))
+    {
+        auto fallback_it = group_fallback_links_.find("right_fr3_arm");
+        if (fallback_it != group_fallback_links_.end()) {
+            bool switched = false;
+            for (const auto& fb : fallback_it->second)
+            {
+                if (!linkInGroup_(fb, group_name)) continue;
+
+                geometry_msgs::msg::PoseStamped right_target_fb;
+                if (transformTargetToLink_(right_target, right_ee_link, fb, right_target_fb))
+                {
+                    RCLCPP_WARN(node_->get_logger(),
+                      "PlanArmMove: right ee_link '%s' is not in group '%s'. "
+                      "Transformed right target to fallback link '%s'.",
+                      right_ee_link.c_str(), group_name.c_str(), fb.c_str());
+
+                    right_target = right_target_fb;
+                    right_ee_link = fb;
+                    switched = true;
+                    break;
+                }
+            }
+
+            if (!switched) {
+                RCLCPP_ERROR(node_->get_logger(),
+                  "PlanArmMove: right ee_link '%s' not in group '%s' and no usable fallback link found.",
+                  right_ee_link.c_str(), group_name.c_str());
+                return BT::NodeStatus::FAILURE;
+            }
+        }
+        else {
+            RCLCPP_ERROR(node_->get_logger(),
+              "PlanArmMove: right ee_link '%s' not in group '%s' and no fallbacks configured.",
+              right_ee_link.c_str(), group_name.c_str());
+            return BT::NodeStatus::FAILURE;
+        }
+    }
+    
+    // Build dual-arm goal constraints
+    auto left_goal = kinematic_constraints::constructGoalConstraints(
+                      "left_fr3_hand", left_target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
+    auto right_goal = kinematic_constraints::constructGoalConstraints(
+                       "right_fr3_hand", right_target, /*pos_tol=*/0.005, /*ang_tol=*/0.01);
+    
+    req.goal_constraints.push_back(left_goal);
+    req.goal_constraints.push_back(right_goal);
+    
+    RCLCPP_INFO(node_->get_logger(), 
+                "Planning dual-arm motion: left[%.3f,%.3f,%.3f] right[%.3f,%.3f,%.3f]",
+                left_target.pose.position.x, left_target.pose.position.y, left_target.pose.position.z,
+                right_target.pose.position.x, right_target.pose.position.y, right_target.pose.position.z);
+  } 
+  else {
+    // Single-arm planning: parse single target
+    geometry_msgs::msg::PoseStamped target;
+    if (auto ps = getInput<geometry_msgs::msg::PoseStamped>("target")){
+      target = *ps;
+      RCLCPP_INFO(node_->get_logger(), "PlanArmMove: using PoseStamped from 'target' port");
+    }
+    else if (auto p = getInput<geometry_msgs::msg::Pose>("target_pose")){
+      std::string frame = "base";
+      (void)getInput("frame_id", frame);
+      target.header.stamp = node_->now();
+      target.header.frame_id = frame;
+      target.pose = *p;
+      RCLCPP_INFO(node_->get_logger(), "Pose: %s", poseToString(target.pose).c_str());
+      RCLCPP_INFO(node_->get_logger(), "PlanArmMove: using Pose from 'target_pose' with frame_id='%s'", frame.c_str());
+    }
+    else {
+      std::string ns = "bt_node";
+      (void)getInput("ns", ns);
+      if (!bt_nodes::get_pose_param(node_, target, ns)){
+        RCLCPP_ERROR(node_->get_logger(),
+                     "PlanArmMove: no 'target' or 'target_pose' provided, and params under '%s' not found",
+                     ns.c_str());
+        return BT::NodeStatus::FAILURE;
+      }
+      RCLCPP_INFO(node_->get_logger(), "PlanArmMove: using target from parameters namespace '%s'", ns.c_str());
+    }
+
+    // Resolve end-effector link for single arm
+    std::string ee_link_override;
+    (void)getInput("ee_link", ee_link_override);
+    std::string ee_link = resolveEndEffectorLink(group_name, ee_link_override);
+
+    // Handle end-effector link validation and transformation
+    if (!linkInGroup_(ee_link, group_name))
+    {
+      auto fallback_it = group_fallback_links_.find(group_name);
+      if (fallback_it != group_fallback_links_.end()) {
+        bool switched = false;
+        for (const auto& fb : fallback_it->second)
+        {
+          if (!linkInGroup_(fb, group_name)) continue;
+
+          geometry_msgs::msg::PoseStamped target_fb;
+          if (transformTargetToLink_(target, ee_link, fb, target_fb))
+          {
+            RCLCPP_WARN(node_->get_logger(),
+              "PlanArmMove: link '%s' is not in group '%s'. "
+              "Transformed goal to fallback link '%s'.",
+              ee_link.c_str(), group_name.c_str(), fb.c_str());
+
+            target = target_fb;
+            ee_link = fb;
+            switched = true;
+            break;
+          }
+        }
+
+        if (!switched) {
+          RCLCPP_ERROR(node_->get_logger(),
+            "PlanArmMove: ee_link '%s' not in group '%s' and no usable fallback link found.",
+            ee_link.c_str(), group_name.c_str());
+          return BT::NodeStatus::FAILURE;
+        }
+      }
+    }
 
   // Call planning service
   auto sreq = std::make_shared<GetMotionPlan::Request>();
   sreq->motion_plan_request = req;
 
   RCLCPP_INFO(node_->get_logger(),
-              "PlanArmMove: calling %s for group '%s', pipeline '%s'",
-              plan_service_name_.c_str(), group_.c_str(), pipeline_.c_str());
+              "PlanArmMove: calling %s for group '%s' (type: %s), pipeline '%s', planner '%s'",
+              plan_service_name_.c_str(), group_name.c_str(), group_type.c_str(), 
+              config.pipeline_id.c_str(), config.planner_id.c_str());
+
 
   auto sres_future = plan_client_->async_send_request(sreq);
   auto rc = rclcpp::spin_until_future_complete(node_, sres_future, 10s);
 
-  if (rc != rclcpp::FutureReturnCode::SUCCESS) {
+  if (rc != rclcpp::FutureReturnCode::SUCCESS) { 
     RCLCPP_ERROR(node_->get_logger(), "PlanArmMove: planning service wait failed (%d)", (int)rc);
     return BT::NodeStatus::FAILURE;
   } 
